@@ -13,7 +13,7 @@ export const skillsSchema = z.object({
   id: z.string().uuid(),
   name: z.string().max(255).min(1),
   description: z.string().max(255).min(5),
-  category: z.enum(Object.values(E_SkillCategory) as [E_SkillCategory, ...E_SkillCategory[]]),
+  category: z.nativeEnum(E_SkillCategory),
   icon: z.string().url(),
 });
 
@@ -29,7 +29,5 @@ export default class SkillModel extends BaseModel<Db_Skills> {
   public async createTable(): Promise<void> {
     const query = "";
     await QueryHandler.handleCommitQuery(query, []);
-
-    await this.findAll();
   }
 }
