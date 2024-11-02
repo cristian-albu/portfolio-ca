@@ -1,22 +1,22 @@
-import { z } from "zod";
-import { TableNames } from "../lib/tableNames";
-import BaseModel from "./utils/baseModel";
-import type { DB_Timestamps } from "../types";
-import QueryHandler from "./utils/queryHandler";
+import BaseModel, { SqlDataTypes, TableNames } from "./utils/baseModel";
 
-export const experienceSchema = z.object({
-  id: z.string().uuid(),
-});
-
-export type Db_Experience = z.infer<typeof experienceSchema> & DB_Timestamps;
-
-export default class ExperienceModel extends BaseModel<Db_Experience> {
-  constructor() {
-    super({ tableName: TableNames.EXPERIENCE });
-  }
-
-  public async createTable(): Promise<void> {
-    const query = "";
-    await QueryHandler.handleCommitQuery(query, []);
-  }
+export default class ExperienceModel extends BaseModel {
+    constructor() {
+        super({
+            tableName: TableNames.EXPERIENCE,
+            columns: [
+                { column: "id", type: SqlDataTypes.UUID, primary_key: true },
+                {
+                    column: "createdAt",
+                    type: SqlDataTypes.TIMESTAMP,
+                    default_now: true,
+                },
+                {
+                    column: "updatedAt",
+                    type: SqlDataTypes.TIMESTAMP,
+                    default_now: true,
+                },
+            ],
+        });
+    }
 }
