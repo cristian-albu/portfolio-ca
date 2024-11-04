@@ -1,21 +1,11 @@
-import BaseModel, { SqlDataTypes, TableNames } from "./utils/baseModel";
+import BaseModel, { SqlDataTypes, TableNames } from "../models/utils/baseModel";
 
 export default class UpdatesModel extends BaseModel {
     constructor() {
         super({
             tableName: TableNames.UPDATES,
             columns: [
-                { column: "id", type: SqlDataTypes.UUID, primary_key: true },
-                {
-                    column: "createdAt",
-                    type: SqlDataTypes.TIMESTAMP,
-                    default_now: true,
-                },
-                {
-                    column: "updatedAt",
-                    type: SqlDataTypes.TIMESTAMP,
-                    default_now: true,
-                },
+                { column: "title", type: SqlDataTypes.VARCHAR, max: 255 },
             ],
         });
     }

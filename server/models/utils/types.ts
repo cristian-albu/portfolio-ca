@@ -52,6 +52,26 @@ export type Sql_Json = {
     notNull?: boolean;
 };
 
+export enum Sql_Relations {
+    oneToOne = "one-to-one",
+    manyToOne = "many-to-one",
+    manyToMany = "many-to-many",
+}
+
+export type Sql_OneToOne = {
+    column: string;
+    type: SqlDataTypes.UUID;
+    references: string;
+    relation: Sql_Relations.oneToOne;
+};
+
+export type Sql_ManyToOne = {
+    column: string;
+    type: SqlDataTypes.UUID;
+    references: string;
+    relation: Sql_Relations.manyToOne;
+};
+
 export type Sql_DataTypes =
     | Sql_Varchar
     | Sql_Integer
@@ -59,9 +79,11 @@ export type Sql_DataTypes =
     | Sql_Uuid
     | Sql_Timestamp
     | Sql_Enum
-    | Sql_Json;
+    | Sql_Json
+    | Sql_ManyToOne
+    | Sql_OneToOne;
 
 export type TableMetadata = {
-    tableName: TableNames;
+    tableName: TableNames | string;
     columns: Sql_DataTypes[];
 };

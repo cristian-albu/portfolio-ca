@@ -1,15 +1,19 @@
 import type { BunFile } from "bun";
+import { unlink } from "node:fs/promises";
 import { SqlDataTypes } from "./baseModel";
-import type {
-    Sql_Bool,
-    Sql_DataTypes,
-    Sql_Enum,
-    Sql_Integer,
-    Sql_Json,
-    Sql_Timestamp,
-    Sql_Uuid,
-    Sql_Varchar,
-    TableMetadata,
+import {
+    Sql_Relations,
+    type Sql_Bool,
+    type Sql_DataTypes,
+    type Sql_Enum,
+    type Sql_Integer,
+    type Sql_Json,
+    type Sql_ManyToOne,
+    type Sql_OneToOne,
+    type Sql_Timestamp,
+    type Sql_Uuid,
+    type Sql_Varchar,
+    type TableMetadata,
 } from "./types";
 
 type T_SqlZodSchema = {
@@ -20,24 +24,70 @@ type T_SqlZodSchema = {
 export default abstract class SchemaHandler {
     private static createEnumType(enumName: string, values: string[]) {
         return `
-        CREATE TYPE ${enumName} AS ENUM(${values
+        DO $$
+        BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = '${enumName}') THEN
+                CREATE TYPE ${enumName} AS ENUM(${values
             .map((value) => `'${value}'`)
             .join(", ")});
+            END IF;
+        END $$;
+
       `;
     }
 
-    private static handleUuid(col: Sql_Uuid): T_SqlZodSchema {
-        let sql = `${col.column} uuid`;
+    private static handleOneToOne(col: Sql_OneToOne) {
+        let sql = `${col.column} uuid UNIQUE REFERENCES ${col.references}(id) ON DELETE CASCADE`;
         let zod = `${col.column}: z.string().uuid()`;
-
-        if (col.primary_key) sql += " PRIMARY KEY";
-
-        col.notNull ? (sql += " NOT NULL") : (zod += " || z.null()");
 
         return {
             sql,
             zod,
         };
+    }
+
+    private static handleManyToOne(col: Sql_ManyToOne) {
+        let sql = `${col.column} uuid REFERENCES ${col.references}(id) ON DELETE CASCADE`;
+        let zod = `${col.column}: z.string().uuid()`;
+
+        return {
+            sql,
+            zod,
+        };
+    }
+
+    private static handleBasicUuid(col: Sql_Uuid) {
+        let sql = `${col.column} uuid`;
+        let zod = `${col.column}: z.string().uuid()`;
+
+        if (col.primary_key) {
+            sql += " PRIMARY KEY";
+        } else {
+            col.notNull ? (sql += " NOT NULL") : (zod += " || z.null()");
+        }
+
+        return {
+            sql,
+            zod,
+        };
+    }
+
+    private static handleUuid(
+        col: Sql_Uuid | Sql_ManyToOne | Sql_OneToOne
+    ): T_SqlZodSchema {
+        if (!("relation" in col)) {
+            return this.handleBasicUuid(col);
+        }
+
+        switch (col.relation) {
+            case Sql_Relations.oneToOne:
+                return this.handleOneToOne(col);
+            case Sql_Relations.manyToOne:
+                return this.handleManyToOne(col);
+            default:
+                console.error("Relation type not defined");
+                throw new Error("Relation type not defined");
+        }
     }
 
     private static handleVarChar(col: Sql_Varchar): T_SqlZodSchema {
@@ -95,7 +145,9 @@ export default abstract class SchemaHandler {
 
     private static handleEnum(col: Sql_Enum): T_SqlZodSchema {
         let sql = `${col.column} ${col.enumName}`;
-        let zod = `${col.column}: z.enum(${[...col.values]})`;
+        let zod = `${col.column}: z.enum([${[...col.values].map(
+            (v) => `"${v}"`
+        )}])`;
 
         if (col.default) {
             sql += ` DEFAULT '${col.default}'`;
@@ -111,7 +163,7 @@ export default abstract class SchemaHandler {
     }
 
     private static handleJson(col: Sql_Json): T_SqlZodSchema {
-        let sql = `${col.column} JSON`;
+        let sql = `${col.column} JSONB`;
         let zod = `${col.column}: z.string().refine(
             (str) => {
                 try {
@@ -138,7 +190,6 @@ export default abstract class SchemaHandler {
 
         if (col.default_now) {
             sql += ` DEFAULT NOW()`;
-            zod += `.default(() => new Date().toISOString())`;
         }
 
         col.notNull ? (sql += " NOT NULL") : (zod += " || z.null()");
@@ -179,7 +230,8 @@ export default abstract class SchemaHandler {
         export const ${tableName}Schema = z.object({
             ${zodColumns.join(",\n")}
         });
-        export type Db_${tableName} = z.infer<typeof ${tableName}Schema>;`.replace(
+        export type Db_${tableName} = z.infer<typeof ${tableName}Schema>;\n
+        export type Db_${tableName}_body = Omit<Db_${tableName}, 'id'|'createdAt'|'updatedAt'>`.replace(
             /^\s+/gm,
             ""
         );
@@ -254,6 +306,10 @@ export default abstract class SchemaHandler {
             )};`;
 
             try {
+                if (await Bun.file(sqlPath).exists()) {
+                    console.log("Deleted old sql file file");
+                    await unlink(sqlPath);
+                }
                 await Bun.write(sqlPath, `${fileContents}\n${query}`);
                 console.log(
                     `${tableName} schema altered with new columns: ${newColumns.join(
@@ -276,7 +332,7 @@ export default abstract class SchemaHandler {
         sqlEnums: string
     ) {
         const sqlQuery = `${sqlEnums}CREATE TABLE IF NOT EXISTS ${tableName} (
-            ${sqlColumns.join(",")}
+            ${sqlColumns.join(",\n")}
         );`.replace(/^\s+/gm, "");
 
         try {
@@ -314,6 +370,33 @@ export default abstract class SchemaHandler {
         }
 
         return sqlPath;
+    }
+
+    public static async createManyToManyRelation(
+        table1: string,
+        table2: string,
+        basePath = "./server/models/schemas"
+    ) {
+        const firstId = `${table1}_id`;
+        const sceondId = `${table2}_id`;
+        const tableName = `${table1}_${table2}`;
+        const sqlQuery = `CREATE TABLE IF NOT EXISTS ${tableName} (
+            ${firstId} uuid REFERENCES ${table1}(id) ON DELETE CASCADE,
+            ${sceondId} uuid REFERENCES ${table2}(id) ON DELETE CASCADE,
+            PRIMARY KEY (${firstId}, ${sceondId})
+        );`;
+
+        const zodQuery = `import z from 'zod';\nexport const ${tableName}Schema = z.object({\n
+            ${firstId}: z.string().uuid(),\n
+            ${sceondId}: z.string().uuid()\n
+        });\n
+        export type Db_${tableName} = z.infer<typeof ${tableName}Schema>;
+        `;
+
+        await Promise.all([
+            Bun.write(`${basePath}/${tableName}.sql`, sqlQuery),
+            Bun.write(`${basePath}/${tableName}_zod.ts`, zodQuery),
+        ]);
     }
 
     /**

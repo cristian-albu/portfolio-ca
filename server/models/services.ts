@@ -4,19 +4,7 @@ export default class ServicesModel extends BaseModel {
     constructor() {
         super({
             tableName: TableNames.SERVICES,
-            columns: [
-                { column: "id", type: SqlDataTypes.UUID, primary_key: true },
-                {
-                    column: "createdAt",
-                    type: SqlDataTypes.TIMESTAMP,
-                    default_now: true,
-                },
-                {
-                    column: "updatedAt",
-                    type: SqlDataTypes.TIMESTAMP,
-                    default_now: true,
-                },
-            ],
+            columns: [],
         });
     }
 }

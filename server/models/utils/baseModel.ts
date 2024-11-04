@@ -24,18 +24,33 @@ export enum SqlDataTypes {
 }
 
 export default class BaseModel {
-    public tableName: TableNames;
+    public tableName: TableNames | string;
     public columns: Sql_DataTypes[];
     public sqlSchemaPath: string | null = null;
     public zodSchemaPath: string | null = null;
 
-    static instaces: BaseModel[] = [];
+    static instaces: Record<TableNames | string, BaseModel> = {};
 
     constructor({ tableName, columns }: TableMetadata) {
         this.tableName = tableName;
-        this.columns = columns;
+        this.columns = [
+            { column: "id", type: SqlDataTypes.UUID, primary_key: true },
+            ...columns,
+            {
+                column: "createdAt",
+                type: SqlDataTypes.TIMESTAMP,
+                default_now: true,
+                notNull: true,
+            },
+            {
+                column: "updatedAt",
+                type: SqlDataTypes.TIMESTAMP,
+                default_now: true,
+                notNull: true,
+            },
+        ];
 
-        BaseModel.instaces.push(this);
+        BaseModel.instaces[this.tableName] = this;
     }
 
     static getInstances() {
@@ -43,13 +58,13 @@ export default class BaseModel {
     }
 
     static async initSchemas() {
-        if (this.instaces.length === 0) {
+        if (Object.keys(this.instaces).length === 0) {
             console.log("No schemas found");
             return;
         }
 
         try {
-            for await (const instance of this.instaces) {
+            for await (const instance of Object.values(this.instaces)) {
                 await instance.initSchema();
             }
         } catch (error) {
@@ -59,11 +74,14 @@ export default class BaseModel {
         console.log("Schemas created");
     }
 
-    public async initSchema() {
-        const { sqlPath, zodPath } = await SchemaHandler.createSchema({
-            tableName: this.tableName,
-            columns: this.columns,
-        });
+    public async initSchema(schemaPath?: string) {
+        const { sqlPath, zodPath } = await SchemaHandler.createSchema(
+            {
+                tableName: this.tableName,
+                columns: this.columns,
+            },
+            schemaPath
+        );
         this.sqlSchemaPath = sqlPath;
         this.zodSchemaPath = zodPath;
     }
@@ -100,20 +118,16 @@ export default class BaseModel {
         return result.rows[0];
     }
 
-    public async createOne(entry: Record<string, SqlDataTypes>) {
-        const entryArr = Object.entries(entry);
-        const { columns, values } = entryArr.reduce(
-            (accum, current) => {
-                const [key, value] = current;
-
+    public async createOne(entry: Record<string, unknown>) {
+        const { columns, values } = Object.entries(entry).reduce(
+            (accum, [key, value]) => {
                 accum.columns.push(key);
                 accum.values.push(
-                    typeof value === "number" ? ` ${value}` : ` '${value}'`
+                    typeof value === "number" ? value : `${value}`
                 );
-
                 return accum;
             },
-            { columns: [] as string[], values: [] as string[] }
+            { columns: [] as string[], values: [] as (string | number)[] }
         );
 
         const result = await QueryHandler.handleCommitQuery(
@@ -128,18 +142,22 @@ export default class BaseModel {
         return result.rows[0];
     }
 
-    public updateById(id: string, entry: Record<string, SqlDataTypes>) {
-        const setters = Object.entries(entry).map(
-            ([key, val]) =>
-                `${key}=${typeof val === "number" ? val : `'${val}'`}`
+    public async updateById(id: string, entry: Record<string, unknown>) {
+        const columns = Object.keys(entry);
+        const values = Object.values(entry).map((val) =>
+            typeof val === "number" ? val : `${val}`
         );
 
-        return QueryHandler.handleCommitQuery(
-            `UPDATE ${this.tableName} SET ${setters
-                .map((_, i) => `$${i + 2}`)
-                .join(",")} WHERE id=$1`,
-            [id, ...setters]
+        const setters = columns.map((col, index) => `${col}=$${index + 2}`);
+
+        const result = await QueryHandler.handleCommitQuery(
+            `UPDATE ${this.tableName} SET ${setters.join(
+                ", "
+            )} WHERE id=$1 RETURNING *;`,
+            [id, ...values]
         );
+
+        return result.rows[0];
     }
 
     public deleteById(id: string) {
