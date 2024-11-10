@@ -1,18 +1,22 @@
 {
-  "name": "portfolio-ca",
-  "module": "index.ts",
-  "type": "module",
-  "scripts": {
-    "start": "bun index.ts",
-    "dev": "bun --watch index.ts"
-  },
-  "devDependencies": {
-    "@types/bun": "latest"
-  },
-  "peerDependencies": {
-    "typescript": "^5.0.0"
-  },
-  "dependencies": {
-    "hono": "^4.6.7"
-  }
+    "name": "portfolio-ca",
+    "module": "index.ts",
+    "type": "module",
+    "scripts": {
+        "start": "bun server/index.ts",
+        "dev": "bun --watch server/index.ts",
+        "init-schemas": "bun server/scripts/initSchemas.ts"
+    },
+    "devDependencies": {
+        "@types/bun": "latest",
+        "@types/pg": "^8.11.10"
+    },
+    "peerDependencies": {
+        "typescript": "^5.0.0"
+    },
+    "dependencies": {
+        "hono": "^4.6.7",
+        "pg": "^8.13.1",
+        "zod": "^3.23.8"
+    }
 }

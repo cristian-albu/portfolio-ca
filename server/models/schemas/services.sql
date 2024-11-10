@@ -1,0 +1,5 @@
+CREATE TABLE IF NOT EXISTS services (
+id uuid PRIMARY KEY,
+createdAt TIMESTAMP DEFAULT NOW(),
+updatedAt TIMESTAMP DEFAULT NOW()
+);
